@@ -235,7 +235,10 @@
   <div id="sec-list" class="section">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
       <span id="lib-count" style="font-size:14px;color:var(--muted)">0 words</span>
-      <button class="btn" onclick="exportCSV()" style="font-size:13px;padding:7px 14px">Export CSV</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn danger" onclick="clearAll()" style="font-size:13px;padding:7px 14px">Clear all</button>
+        <button class="btn" onclick="exportCSV()" style="font-size:13px;padding:7px 14px">Export CSV</button>
+      </div>
     </div>
     <div class="card" id="lib-list"><div class="empty">No words yet.</div></div>
   </div>
@@ -374,6 +377,22 @@ function updateFcStats() {
   document.getElementById('fc-miss').textContent = fcMissCount;
 }
 
+// Spaced repetition: each word has a weight; wrong answers increase weight
+function getWeights() {
+  return words.map(w => Math.max(1, (w.missCount||0)*3 - (w.gotCount||0) + 1));
+}
+
+function weightedRandom() {
+  const weights = getWeights();
+  const total = weights.reduce((a,b)=>a+b,0);
+  let r = Math.random()*total;
+  for(let i=0;i<weights.length;i++){
+    r -= weights[i];
+    if(r<=0) return i;
+  }
+  return words.length-1;
+}
+
 function startFlash() {
   if(!words.length){alert('Add some words first!');return;}
   fcGotCount=0; fcMissCount=0; updateFcStats();
@@ -383,7 +402,9 @@ function startFlash() {
 
 function nextCard() {
   if(!words.length) return;
-  fcIdx = Math.floor(Math.random()*words.length);
+  let newIdx = weightedRandom();
+  if(words.length > 1) while(newIdx === fcIdx) newIdx = weightedRandom();
+  fcIdx = newIdx;
   fcRevealed = false;
   const w = words[fcIdx];
   document.getElementById('fc-word').textContent = w.en;
@@ -408,8 +429,14 @@ function revealCard() {
   document.getElementById('fc-answer-row').style.display='flex';
 }
 
-function fcGot(){fcGotCount++;updateFcStats();nextCard();}
-function fcMiss(){fcMissCount++;updateFcStats();nextCard();}
+function fcGot(){
+  words[fcIdx].gotCount = (words[fcIdx].gotCount||0)+1;
+  fcGotCount++; save(); updateFcStats(); nextCard();
+}
+function fcMiss(){
+  words[fcIdx].missCount = (words[fcIdx].missCount||0)+1;
+  fcMissCount++; save(); updateFcStats(); nextCard();
+}
 
 // ── Quiz ──
 let qzCurrent = null, qzAnswered = false;
@@ -488,6 +515,11 @@ function renderLib() {
 function delWord(i){
   if(!confirm('Delete "'+words[i].en+'"?')) return;
   words.splice(i,1); save(); renderLib(); updateFcStats();
+}
+
+function clearAll(){
+  if(!confirm('Delete all '+words.length+' words? This cannot be undone.')) return;
+  words=[]; save(); renderLib(); updateFcStats();
 }
 
 function exportCSV(){
