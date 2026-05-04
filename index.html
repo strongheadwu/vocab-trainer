@@ -309,10 +309,21 @@ async function lookupWords() {
   const btn = document.getElementById('lookup-btn');
   btn.disabled = true;
   document.getElementById('pending-card').style.display='none';
-  setStatus('lookup-status','<div class="spinner"><span></span><span></span><span></span></div> Looking up '+list.length+' word'+(list.length>1?'s':'')+'...');
+  pending = [];
+
+  // batch into groups of 25
+  const BATCH = 25;
+  const batches = [];
+  for(let i=0;i<list.length;i+=BATCH) batches.push(list.slice(i,i+BATCH));
+
   try {
-    const text = await claude([{role:'user',content:`For each word below, give: IPA phonetic transcription, a short English definition (under 15 words), and one short example sentence (under 15 words). Return ONLY a JSON array, no markdown, no extra text:\n[{"en":"word","ipa":"/.../ ","def":"...","sentence":"..."}]\n\nWords:\n${list.join('\n')}`}]);
-    pending = parseArr(text);
+    for(let b=0;b<batches.length;b++){
+      const batch = batches[b];
+      setStatus('lookup-status','<div class="spinner"><span></span><span></span><span></span></div> Looking up batch '+(b+1)+' of '+batches.length+' ('+((b)*BATCH+1)+'-'+Math.min((b+1)*BATCH,list.length)+')...');
+      const text = await claude([{role:'user',content:`For each word, return IPA, definition (max 10 words), example (max 10 words). ONLY JSON array, no extra text:\n[{"en":"word","ipa":"/x/","def":"...","sentence":"..."}]\n\nWords:\n${batch.join('\n')}`}]);
+      const arr = parseArr(text);
+      pending = pending.concat(arr);
+    }
     setStatus('lookup-status','');
     renderPending();
   } catch(err) {
@@ -336,7 +347,7 @@ function addPending(i) {
   const w = pending[i];
   if(!w) return;
   if(!words.find(x=>x.en.toLowerCase()===w.en.toLowerCase())) {
-    words.push({en:w.en,def:w.def,sentence:w.sentence||''});
+    words.push({en:w.en,ipa:w.ipa||'',def:w.def,sentence:w.sentence||''});
     save(); updateFcStats();
   }
   const btn = document.getElementById('pi-'+i);
